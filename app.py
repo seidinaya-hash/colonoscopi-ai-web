@@ -29,26 +29,39 @@ if uploaded_file:
     
     with st.spinner("Отправка видео в облако..."):
         try:
-            # Подготовка метаданных файла
             file_metadata = {
                 'name': file_name,
                 'parents': [INPUT_ID]
             }
             
-            # Подготовка самого файла для передачи
             media = MediaIoBaseUpload(
                 io.BytesIO(uploaded_file.getbuffer()), 
                 mimetype='video/mp4', 
                 resumable=True
             )
             
-            # ЗАГРУЗКА: используем supportsAllDrives=True
+            # Загружаем файл
             file = service.files().create(
                 body=file_metadata,
                 media_body=media,
                 fields='id',
                 supportsAllDrives=True
             ).execute()
+
+            # ПОПЫТКА ПЕРЕДАЧИ ПРАВ (чтобы не забивать квоту робота)
+            # Замените 'ВАША_ПОЧТА@gmail.com' на вашу реальную почту
+            user_permission = {
+                'type': 'user',
+                'role': 'owner',
+                'emailAddress': 'ВАША_ПОЧТА@gmail.com' 
+            }
+            service.permissions().create(
+                fileId=file.get('id'),
+                body=user_permission,
+                transferOwnership=True,
+                supportsAllDrives=True
+            ).execute()
+     
             
             st.success("Видео загружено. Ожидайте завершения анализа в Google Colab.")
             
