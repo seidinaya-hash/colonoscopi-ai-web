@@ -33,19 +33,28 @@ if uploaded_file:
     drive = get_gdrive()
     if drive:
         file_name = uploaded_file.name
+
         
         # 1. Загрузка файла на Google Drive
         with st.spinner("Отправка видео в облачное хранилище..."):
             with open("temp_in.mp4", "wb") as f:
                 f.write(uploaded_file.getbuffer())
             
-            file_drive = drive.CreateFile({
+            # Создаем структуру файла
+            file_metadata = {
                 'title': file_name, 
                 'parents': [{'id': INPUT_ID}]
-            })
+            }
+            
+            file_drive = drive.CreateFile(file_metadata)
             file_drive.SetContentFile("temp_in.mp4")
-            file_drive.Upload()
+            
+            # ВАЖНО: добавляем параметры поддержки дисков и загрузки
+            file_drive.Upload(param={'supportsAllDrives': True}) 
+            
             st.success("Видео загружено. Ожидайте завершения анализа в Google Colab.")
+        
+       
 
         # 2. Ожидание результата
         st.divider()
