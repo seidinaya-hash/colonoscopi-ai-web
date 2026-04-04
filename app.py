@@ -18,7 +18,7 @@ def get_gdrive_service():
         st.error(f"Ошибка авторизации: {e}")
         return None
 
-# Твои актуальные ID папок на Общем диске
+# ID папок на Общем диске
 INPUT_ID = "1VqFdKOKc0obTgoLNk1cFbDAd6SFOQvXf"
 OUTPUT_ID = "1cOcjJ0SeImKCk0FW4PZ58pVbdBwTjrCD"
 
@@ -67,6 +67,7 @@ if uploaded_file:
         found = False
         for i in range(120):
             try:
+                # Поиск обработанного файла в папке finished
                 query = f"'{OUTPUT_ID}' in parents and name = '{file_name}' and trashed = false"
                 results = service.files().list(
                     q=query, 
@@ -84,11 +85,11 @@ if uploaded_file:
                     progress_bar.empty()
                     st.success("Анализ успешно завершен.")
                     
-                    # 1. Получение данных файла в память
+                    # Получение данных результата в память
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
-                    # 2. Кнопка скачивания
+                    # Кнопка скачивания
                     st.download_button(
                         label="Скачать результат анализа (MP4)",
                         data=file_data,
@@ -96,23 +97,36 @@ if uploaded_file:
                         mime="video/mp4"
                     )
 
-                    # 3. УДАЛЕНИЕ: Сразу после подготовки данных удаляем файл из finished
+                    # 3. ПОЛНАЯ ОЧИСТКА: Удаление результата и оригинала
                     try:
+                        # Удаление результата из finished
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
-                        st.info("Файл автоматически удален из облака после обработки.")
-                    except Exception as e:
-                        pass # Если не удалось удалить, не прерываем работу
+                        
+                        # Поиск и удаление оригинала из to_process
+                        search_orig = service.files().list(
+                            q=f"'{INPUT_ID}' in parents and name = '{file_name}' and trashed = false",
+                            fields='files(id)',
+                            supportsAllDrives=True,
+                            includeItemsFromAllDrives=True
+                        ).execute()
+                        
+                        orig_items = search_orig.get('files', [])
+                        if orig_items:
+                            service.files().delete(fileId=orig_items[0]['id'], supportsAllDrives=True).execute()
+                        
+                        st.info("Файлы автоматически удалены из облачного хранилища.")
+                    except Exception:
+                        pass # Ошибки удаления не прерывают работу интерфейса
                     
                     found = True
                     break
-                
                 
                 time.sleep(10)
                 progress_val = min((i + 1) / 60, 1.0)
                 progress_bar.progress(progress_val)
                 status_text.info("Выполняется инференс модели ИИ. Пожалуйста, ожидайте...")
                 
-            except Exception as e:
+            except Exception:
                 time.sleep(5)
 
         if not found:
