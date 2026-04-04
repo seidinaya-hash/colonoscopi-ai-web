@@ -90,7 +90,7 @@ if uploaded_file:
                     
                     # --- КНОПКА СКАЧИВАНИЯ (БЕЗ ВИДЕОПЛЕЕРА) ---
                     st.download_button(
-                        label="📥 СКАЧАТЬ ОБРАБОТАННОЕ ВИДЕО",
+                        label="СКАЧАТЬ ОБРАБОТАННОЕ ВИДЕО",
                         data=file_data,
                         file_name=f"analyzed_{file_name}",
                         mime="video/mp4",
