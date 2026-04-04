@@ -1,7 +1,7 @@
 import streamlit as st
 import time
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -24,7 +24,7 @@ INPUT_ID = "1VqFdKOKc0obTgoLNk1cFbDAd6SFOQvXf"
 OUTPUT_ID = "1cOcjJ0SeImKCk0FW4PZ58pVbdBwTjrCD"
 METRICS_ID = "1fIwirl-vegbT61HovVHGEJukxGHwdJH2"
 
-# --- ФУНКЦИИ МЕТРИК ---
+# --- ФУНКЦИИ МЕТРИК С ИСПРАВЛЕННЫМ ВРЕМЕНЕМ ---
 
 def get_log_content(service):
     """Получает id файла логов и его текст"""
@@ -41,11 +41,14 @@ def get_log_content(service):
         return None, ""
 
 def write_log(service, message):
-    """Записывает событие в лог файл на Google Drive"""
+    """Записывает событие в лог (Время Астаны: UTC+5)"""
     try:
         file_id, old_content = get_log_content(service)
-        now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-        new_line = f"[{now}] {message}\n"
+        
+        # Коррекция времени: берем UTC и добавляем 5 часов
+        astana_time = (datetime.utcnow() + timedelta(hours=5)).strftime("%d.%m.%Y %H:%M:%S")
+        
+        new_line = f"[{astana_time}] {message}\n"
         full_content = old_content + new_line
         
         media = MediaIoBaseUpload(io.BytesIO(full_content.encode('utf-8')), mimetype='text/plain')
@@ -64,9 +67,9 @@ st.set_page_config(page_title="AI-ColoScan Portal", page_icon="🩺")
 
 service = get_gdrive_service()
 
-# Логика защиты от ложных визитов (срабатывает 1 раз за сессию браузера)
+# Логика сессии (записывает визит только один раз за открытие вкладки)
 if service and 'session_active' not in st.session_state:
-    write_log(service, "ВИЗИТ: Врач зашел на сайт")
+    write_log(service, "ВХОД: Врач открыл портал")
     st.session_state['session_active'] = True
 
 st.title("AI-ColoScan: Анализ видео")
@@ -78,21 +81,19 @@ if uploaded_file:
     if service:
         file_name = uploaded_file.name
         
-        # 1. Загрузка файла на Google Drive
         with st.spinner("Загрузка файла в систему..."):
             try:
                 file_metadata = {'name': file_name, 'parents': [INPUT_ID]}
                 media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype='video/mp4', resumable=True)
                 service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
                 
-                # МЕТРИКА: Загрузка
-                write_log(service, f"ДЕЙСТВИЕ: Загружено видео {file_name}")
+                # Логируем загрузку
+                write_log(service, f"ЗАГРУЗКА: {file_name}")
                 st.success("Файл принят. Ожидайте завершения анализа.")
             except Exception as e:
                 st.error(f"Ошибка передачи данных: {e}")
                 st.stop()
 
-        # 2. Мониторинг готовности результата
         status_text = st.empty()
         progress_bar = st.progress(0)
         found = False
@@ -108,8 +109,8 @@ if uploaded_file:
                     status_text.empty()
                     progress_bar.empty()
                     
-                    # МЕТРИКА: Успех
-                    write_log(service, f"РЕЗУЛЬТАТ: Анализ {file_name} успешно завершен")
+                    # Логируем успешный финиш
+                    write_log(service, f"ГОТОВО: Анализ {file_name} завершен")
                     st.success("Анализ успешно завершен.")
                     
                     request = service.files().get_media(fileId=result_file['id'])
@@ -122,14 +123,14 @@ if uploaded_file:
                         mime="video/mp4"
                     )
 
-                    # 3. ПОЛНАЯ ОЧИСТКА
+                    # Очистка
                     try:
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
                         search_orig = service.files().list(q=f"'{INPUT_ID}' in parents and name = '{file_name}' and trashed = false", fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
                         orig_items = search_orig.get('files', [])
                         if orig_items:
                             service.files().delete(fileId=orig_items[0]['id'], supportsAllDrives=True).execute()
-                        st.info("Файлы автоматически удалены из хранилища.")
+                        st.info("Файлы удалены из облака после обработки.")
                     except:
                         pass
                     
@@ -143,26 +144,17 @@ if uploaded_file:
                 time.sleep(5)
 
         if not found:
-            st.error("Превышено время ожидания ответа.")
+            st.error("Превышено время ожидания.")
 
-# --- ПАНЕЛЬ АДМИНИСТРАТОРА (В САМОМ НИЗУ) ---
+# --- АДМИН ПАНЕЛЬ (ТОЛЬКО ЛОГИ И ВРЕМЯ) ---
 st.write("---")
-with st.expander("Admin Panel"):
-    password = st.text_input("Ввод ключа", type="password")
-    if password == "1234": # Смените пароль здесь
+with st.expander("Панель управления"):
+    password = st.text_input("Пароль", type="password")
+    if password == "1234": # Здесь твой пароль
         if service:
             _, logs = get_log_content(service)
             if logs:
-                lines = logs.strip().split('\n')
-                visits = sum(1 for l in lines if "ВИЗИТ" in l)
-                actions = sum(1 for l in lines if "ДЕЙСТВИЕ" in l)
-                results = sum(1 for l in lines if "РЕЗУЛЬТАТ" in l)
-                
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Визиты", visits)
-                col2.metric("Загрузки", actions)
-                col3.metric("Успешно", results)
-                
-                st.text_area("Логи системы", logs, height=300)
+                st.text_area("История действий (Время Астаны)", logs, height=400)
+                st.download_button("Скачать лог", logs, file_name="logs.txt")
             else:
-                st.write("Логов пока нет.")
+                st.write("История пуста.")
