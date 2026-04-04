@@ -77,30 +77,35 @@ if uploaded_file:
                 ).execute()
                 
                 items = results.get('files', [])
-                
                 if items:
                     result_file = items[0]
                     
-                    # Очищаем индикаторы прогресса перед показом кнопки
                     status_text.empty()
                     progress_bar.empty()
-                    
                     st.success("Анализ успешно завершен.")
                     
-                    # Получение данных файла
+                    # 1. Получение данных файла в память
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
-                    # Кнопка скачивания (строгий стиль)
+                    # 2. Кнопка скачивания
                     st.download_button(
                         label="Скачать результат анализа (MP4)",
                         data=file_data,
                         file_name=f"analyzed_{file_name}",
                         mime="video/mp4"
                     )
+
+                    # 3. УДАЛЕНИЕ: Сразу после подготовки данных удаляем файл из finished
+                    try:
+                        service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
+                        st.info("Файл автоматически удален из облака после обработки.")
+                    except Exception as e:
+                        pass # Если не удалось удалить, не прерываем работу
                     
                     found = True
                     break
+                
                 
                 time.sleep(10)
                 progress_val = min((i + 1) / 60, 1.0)
