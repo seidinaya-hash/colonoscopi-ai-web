@@ -25,9 +25,9 @@ OUTPUT_ID = "1cOcjJ0SeImKCk0FW4PZ58pVbdBwTjrCD"
 st.set_page_config(page_title="AI-ColoScan Portal", page_icon="🩺")
 
 st.title("AI-ColoScan: Анализ видео")
-st.write("Загрузите видео колоноскопии. Система обработает его с помощью ИИ и вернет кнопку для скачивания.")
+st.write("Загрузите видео колоноскопии для автоматизированного поиска патологий.")
 
-uploaded_file = st.file_uploader("Выберите видео файл (MP4)", type=['mp4', 'mov', 'avi'])
+uploaded_file = st.file_uploader("Выберите видео файл (MP4, MOV, AVI)", type=['mp4', 'mov', 'avi'])
 
 if uploaded_file:
     service = get_gdrive_service()
@@ -35,7 +35,7 @@ if uploaded_file:
         file_name = uploaded_file.name
         
         # 1. Загрузка файла на Google Drive
-        with st.spinner("Загрузка видео в облако..."):
+        with st.spinner("Загрузка файла в систему..."):
             try:
                 file_metadata = {
                     'name': file_name,
@@ -55,13 +55,12 @@ if uploaded_file:
                     supportsAllDrives=True
                 ).execute()
                 
-                st.success("Видео загружено. Ожидайте появления кнопки скачивания...")
+                st.success("Файл принят. Ожидайте завершения анализа.")
             except Exception as e:
-                st.error(f"Ошибка при загрузке: {e}")
+                st.error(f"Ошибка передачи данных: {e}")
                 st.stop()
 
-        # 2. Ожидание результата
-        st.divider()
+        # 2. Мониторинг готовности результата
         status_text = st.empty()
         progress_bar = st.progress(0)
         
@@ -81,20 +80,23 @@ if uploaded_file:
                 
                 if items:
                     result_file = items[0]
-                    status_text.success("Анализ завершен! Ваш файл готов.")
-                    st.balloons()
                     
-                    # Скачиваем готовое видео из Drive в память Streamlit
+                    # Очищаем индикаторы прогресса перед показом кнопки
+                    status_text.empty()
+                    progress_bar.empty()
+                    
+                    st.success("Анализ успешно завершен.")
+                    
+                    # Получение данных файла
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
-                    # --- КНОПКА СКАЧИВАНИЯ (БЕЗ ВИДЕОПЛЕЕРА) ---
+                    # Кнопка скачивания (строгий стиль)
                     st.download_button(
-                        label="СКАЧАТЬ ОБРАБОТАННОЕ ВИДЕО",
+                        label="Скачать результат анализа (MP4)",
                         data=file_data,
                         file_name=f"analyzed_{file_name}",
-                        mime="video/mp4",
-                        help="Нажмите, чтобы сохранить результат анализа на компьютер"
+                        mime="video/mp4"
                     )
                     
                     found = True
@@ -103,11 +105,10 @@ if uploaded_file:
                 time.sleep(10)
                 progress_val = min((i + 1) / 60, 1.0)
                 progress_bar.progress(progress_val)
-                status_text.info(f"ИИ работает... Прошло {i*10} сек. Как только всё будет готово, здесь появится кнопка.")
+                status_text.info("Выполняется инференс модели ИИ. Пожалуйста, ожидайте...")
                 
             except Exception as e:
-                st.warning(f"Связь с облаком... ({e})")
                 time.sleep(5)
 
         if not found:
-            st.error("Время ожидания истекло.")
+            st.error("Превышено время ожидания ответа от сервера обработки.")
