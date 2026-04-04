@@ -90,8 +90,10 @@ if uploaded_file:
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
-                    # Показываем видео на сайте
-                    st.video(file_data)
+                    # Показываем видео на сайте (с исправлением для отображения)
+                    st.subheader("Результат анализа:")
+                    video_stream = io.BytesIO(file_data)
+                    st.video(video_stream, format="video/mp4")
                     
                     # Кнопка скачивания
                     st.download_button(
@@ -105,7 +107,7 @@ if uploaded_file:
                 
                 # Обновление прогресса
                 time.sleep(10)
-                progress_val = min((i + 1) / 60, 1.0) # Визуальный прогресс на 10 минут
+                progress_val = min((i + 1) / 60, 1.0) # Визуальный прогресс
                 progress_bar.progress(progress_val)
                 status_text.info(f"ИИ обрабатывает видео... Прошло {i*10} сек. Не закрывайте страницу.")
                 
