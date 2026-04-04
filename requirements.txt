@@ -1,5 +1,3 @@
 streamlit
-ultralytics
-opencv-python-headless
-pillow
-numpy
+pydrive2
+oauth2client
