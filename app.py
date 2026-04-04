@@ -25,7 +25,7 @@ OUTPUT_ID = "1cOcjJ0SeImKCk0FW4PZ58pVbdBwTjrCD"
 st.set_page_config(page_title="AI-ColoScan Portal", page_icon="🩺")
 
 st.title("AI-ColoScan: Анализ видео")
-st.write("Загрузите видео колоноскопии. Система обработает его с помощью ИИ и вернет результат.")
+st.write("Загрузите видео колоноскопии. Система обработает его с помощью ИИ и вернет кнопку для скачивания.")
 
 uploaded_file = st.file_uploader("Выберите видео файл (MP4)", type=['mp4', 'mov', 'avi'])
 
@@ -34,7 +34,7 @@ if uploaded_file:
     if service:
         file_name = uploaded_file.name
         
-        # 1. Загрузка файла на Google Drive (Общий диск)
+        # 1. Загрузка файла на Google Drive
         with st.spinner("Загрузка видео в облако..."):
             try:
                 file_metadata = {
@@ -48,26 +48,24 @@ if uploaded_file:
                     resumable=True
                 )
                 
-                # Загружаем с флагом supportsAllDrives для Общих дисков
-                uploaded_drive_file = service.files().create(
+                service.files().create(
                     body=file_metadata,
                     media_body=media,
                     fields='id',
                     supportsAllDrives=True
                 ).execute()
                 
-                st.success("Видео успешно загружено. ИИ приступает к анализу...")
+                st.success("Видео загружено. Ожидайте появления кнопки скачивания...")
             except Exception as e:
                 st.error(f"Ошибка при загрузке: {e}")
                 st.stop()
 
-        # 2. Ожидание результата из папки finished
+        # 2. Ожидание результата
         st.divider()
         status_text = st.empty()
         progress_bar = st.progress(0)
         
         found = False
-        # Проверяем папку каждые 10 секунд в течение 20 минут
         for i in range(120):
             try:
                 query = f"'{OUTPUT_ID}' in parents and name = '{file_name}' and trashed = false"
@@ -83,37 +81,33 @@ if uploaded_file:
                 
                 if items:
                     result_file = items[0]
-                    status_text.success("Анализ завершен! Загружаем результат...")
+                    status_text.success("Анализ завершен! Ваш файл готов.")
                     st.balloons()
                     
-                    # Скачиваем готовое видео
+                    # Скачиваем готовое видео из Drive в память Streamlit
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
-                    # Показываем видео на сайте (с исправлением для отображения)
-                    st.subheader("Результат анализа:")
-                    video_stream = io.BytesIO(file_data)
-                    st.video(video_stream, format="video/mp4")
-                    
-                    # Кнопка скачивания
+                    # --- КНОПКА СКАЧИВАНИЯ (БЕЗ ВИДЕОПЛЕЕРА) ---
                     st.download_button(
-                        label="Скачать обработанное видео",
+                        label="📥 СКАЧАТЬ ОБРАБОТАННОЕ ВИДЕО",
                         data=file_data,
                         file_name=f"analyzed_{file_name}",
-                        mime="video/mp4"
+                        mime="video/mp4",
+                        help="Нажмите, чтобы сохранить результат анализа на компьютер"
                     )
+                    
                     found = True
                     break
                 
-                # Обновление прогресса
                 time.sleep(10)
-                progress_val = min((i + 1) / 60, 1.0) # Визуальный прогресс
+                progress_val = min((i + 1) / 60, 1.0)
                 progress_bar.progress(progress_val)
-                status_text.info(f"ИИ обрабатывает видео... Прошло {i*10} сек. Не закрывайте страницу.")
+                status_text.info(f"ИИ работает... Прошло {i*10} сек. Как только всё будет готово, здесь появится кнопка.")
                 
             except Exception as e:
-                st.warning(f"Ожидание обновления данных... ({e})")
+                st.warning(f"Связь с облаком... ({e})")
                 time.sleep(5)
 
         if not found:
-            st.error("Время ожидания истекло. Проверьте, запущен ли Google Colab.")
+            st.error("Время ожидания истекло.")
