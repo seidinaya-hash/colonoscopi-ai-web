@@ -43,7 +43,6 @@ def get_log_content(service):
 def write_log(service, message):
     try:
         file_id, old_content = get_log_content(service)
-        # Установка времени Астаны (UTC+5)
         astana_time = (datetime.utcnow() + timedelta(hours=5)).strftime("%d.%m.%Y %H:%M:%S")
         new_line = f"[{astana_time}] {message}\n"
         full_content = old_content + new_line
@@ -59,7 +58,6 @@ def write_log(service, message):
 # Конфигурация страницы
 st.set_page_config(page_title="AI-ColoScan Portal", layout="centered")
 
-# Инициализация состояния входа
 if 'auth' not in st.session_state:
     st.session_state['auth'] = False
 
@@ -81,7 +79,7 @@ if not st.session_state['auth']:
             st.error("Неверный код доступа")
     st.stop()
 
-# Основной интерфейс после входа
+# Основной интерфейс
 st.title("AI-ColoScan: Аналитическая панель")
 st.write("Загрузите скан или видео для проведения диагностики.")
 
@@ -97,19 +95,24 @@ if uploaded_file and service:
     
     with st.spinner("Передача файла в систему анализа..."):
         try:
-            # Загрузка файла на Диск
             file_metadata = {'name': file_name, 'parents': [INPUT_ID]}
             media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=uploaded_file.type, resumable=True)
             service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
             write_log(service, f"ЗАГРУЗКА: {file_name} (Тип: {'Изображение' if is_image else 'Видео'})")
             
-            # Ожидание результата от модели
             status_text = st.empty()
             progress_bar = st.progress(0)
             found = False
 
+            # Ожидание результата
             for i in range(120):
-                query = f"'{OUTPUT_ID}' in parents and name = '{file_name}' and trashed = false"
+                # Для изображений ищем тот же файл, для видео ищем ZIP-отчет
+                if is_image:
+                    target_name = file_name
+                else:
+                    target_name = f"REPORT_{file_name}.zip"
+
+                query = f"'{OUTPUT_ID}' in parents and name = '{target_name}' and trashed = false"
                 results = service.files().list(q=query, fields='files(id, name)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
                 items = results.get('files', [])
                 
@@ -118,7 +121,6 @@ if uploaded_file and service:
                     status_text.empty()
                     progress_bar.empty()
                     
-                    # Скачивание обработанного файла
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
@@ -133,16 +135,17 @@ if uploaded_file and service:
                             st.image(file_data)
                         write_log(service, f"ГОТОВО: Изображение {file_name} обработано")
                     else:
-                        st.success("Анализ видео завершен")
+                        st.success("Анализ видео и формирование отчета завершены")
+                        st.info("Архив содержит: Видео с разметкой, ТОП-10 кадров и текстовый отчет.")
                         st.download_button(
-                            label="Скачать проанализированное видео",
+                            label="Скачать архив результатов (ZIP)",
                             data=file_data,
-                            file_name=f"processed_{file_name}",
-                            mime="video/mp4"
+                            file_name=f"AI_Report_{file_name}.zip",
+                            mime="application/zip"
                         )
-                        write_log(service, f"ГОТОВО: Видео {file_name} обработано")
+                        write_log(service, f"ГОТОВО: Архив отчета {file_name} загружен врачом")
 
-                    # Автоматическая очистка
+                    # Очистка
                     try:
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
                         search_orig = service.files().list(q=f"'{INPUT_ID}' in parents and name = '{file_name}' and trashed = false", fields='files(id)', supportsAllDrives=True).execute()
@@ -157,10 +160,10 @@ if uploaded_file and service:
                 
                 time.sleep(10)
                 progress_bar.progress(min((i + 1) / 60, 1.0))
-                status_text.info("Система обрабатывает данные. Ожидайте...")
+                status_text.info("Система выполняет глубокий анализ и подбор кадров. Пожалуйста, подождите...")
 
             if not found:
-                st.error("Таймаут ожидания. Проверьте работу сервера обработки.")
+                st.error("Таймаут ожидания. Возможно, видео слишком длинное или сервер Colab отключен.")
         except Exception as e:
             st.error(f"Системная ошибка: {e}")
 
