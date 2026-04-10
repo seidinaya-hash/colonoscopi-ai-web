@@ -1,12 +1,14 @@
 import streamlit as st
 import time
 import io
+import os
+from PIL import Image
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
-# Функция авторизации через Secrets Streamlit
+# Настройки и авторизация Google Drive
 def get_gdrive_service():
     try:
         creds_info = st.secrets["gcp_service_account"]
@@ -16,18 +18,16 @@ def get_gdrive_service():
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        st.error(f"Ошибка авторизации: {e}")
+        st.error(f"Ошибка авторизации Google: {e}")
         return None
 
-# ID папок на Общем диске
+# ID папок на Диске
 INPUT_ID = "1VqFdKOKc0obTgoLNk1cFbDAd6SFOQvXf"
 OUTPUT_ID = "1cOcjJ0SeImKCk0FW4PZ58pVbdBwTjrCD"
 METRICS_ID = "1fIwirl-vegbT61HovVHGEJukxGHwdJH2"
 
-# --- ФУНКЦИИ МЕТРИК С ИСПРАВЛЕННЫМ ВРЕМЕНЕМ ---
-
+# Функции работы с логами
 def get_log_content(service):
-    """Получает id файла логов и его текст"""
     try:
         query = f"'{METRICS_ID}' in parents and name = 'logs.txt' and trashed = false"
         results = service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
@@ -41,18 +41,13 @@ def get_log_content(service):
         return None, ""
 
 def write_log(service, message):
-    """Записывает событие в лог (Время Астаны: UTC+5)"""
     try:
         file_id, old_content = get_log_content(service)
-        
-        # Коррекция времени: берем UTC и добавляем 5 часов
+        # Установка времени Астаны (UTC+5)
         astana_time = (datetime.utcnow() + timedelta(hours=5)).strftime("%d.%m.%Y %H:%M:%S")
-        
         new_line = f"[{astana_time}] {message}\n"
         full_content = old_content + new_line
-        
         media = MediaIoBaseUpload(io.BytesIO(full_content.encode('utf-8')), mimetype='text/plain')
-        
         if file_id:
             service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         else:
@@ -61,76 +56,99 @@ def write_log(service, message):
     except:
         pass
 
-# --- ОСНОВНОЙ ИНТЕРФЕЙС ---
+# Конфигурация страницы
+st.set_page_config(page_title="AI-ColoScan Portal", layout="centered")
 
-st.set_page_config(page_title="AI-ColoScan Portal", page_icon="🩺")
+# Инициализация состояния входа
+if 'auth' not in st.session_state:
+    st.session_state['auth'] = False
 
 service = get_gdrive_service()
 
-# Логика сессии (записывает визит только один раз за открытие вкладки)
-if service and 'session_active' not in st.session_state:
-    write_log(service, "ВХОД: Врач открыл портал")
-    st.session_state['session_active'] = True
+# Окно входа
+if not st.session_state['auth']:
+    st.title("Вход в систему AI-ColoScan")
+    st.write("Авторизуйтесь для доступа к анализу данных.")
+    
+    auth_pass = st.text_input("Введите код доступа", type="password")
+    if st.button("Войти"):
+        if auth_pass == "врач2024":
+            st.session_state['auth'] = True
+            if service:
+                write_log(service, "ВХОД: Пользователь авторизован")
+            st.rerun()
+        else:
+            st.error("Неверный код доступа")
+    st.stop()
 
-st.title("AI-ColoScan: Анализ видео")
-st.write("Загрузите видео колоноскопии для автоматизированного поиска патологий.")
+# Основной интерфейс после входа
+st.title("AI-ColoScan: Аналитическая панель")
+st.write("Загрузите скан или видео для проведения диагностики.")
 
-uploaded_file = st.file_uploader("Выберите видео файл (MP4, MOV, AVI)", type=['mp4', 'mov', 'avi'])
+if st.sidebar.button("Выйти"):
+    st.session_state['auth'] = False
+    st.rerun()
 
-if uploaded_file:
-    if service:
-        file_name = uploaded_file.name
-        
-        with st.spinner("Загрузка файла в систему..."):
-            try:
-                file_metadata = {'name': file_name, 'parents': [INPUT_ID]}
-                media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype='video/mp4', resumable=True)
-                service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
-                
-                # Логируем загрузку
-                write_log(service, f"ЗАГРУЗКА: {file_name}")
-                st.success("Файл принят. Ожидайте завершения анализа.")
-            except Exception as e:
-                st.error(f"Ошибка передачи данных: {e}")
-                st.stop()
+uploaded_file = st.file_uploader("Выберите файл", type=['png', 'jpg', 'jpeg', 'mp4', 'mov', 'avi'])
 
-        status_text = st.empty()
-        progress_bar = st.progress(0)
-        found = False
+if uploaded_file and service:
+    file_name = uploaded_file.name
+    is_image = uploaded_file.type.startswith('image')
+    
+    with st.spinner("Передача файла в систему анализа..."):
+        try:
+            # Загрузка файла на Диск
+            file_metadata = {'name': file_name, 'parents': [INPUT_ID]}
+            media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=uploaded_file.type, resumable=True)
+            service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
+            write_log(service, f"ЗАГРУЗКА: {file_name} (Тип: {'Изображение' if is_image else 'Видео'})")
+            
+            # Ожидание результата от модели
+            status_text = st.empty()
+            progress_bar = st.progress(0)
+            found = False
 
-        for i in range(120):
-            try:
+            for i in range(120):
                 query = f"'{OUTPUT_ID}' in parents and name = '{file_name}' and trashed = false"
-                results = service.files().list(q=query, spaces='drive', fields='files(id, name)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-                
+                results = service.files().list(q=query, fields='files(id, name)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
                 items = results.get('files', [])
+                
                 if items:
                     result_file = items[0]
                     status_text.empty()
                     progress_bar.empty()
                     
-                    # Логируем успешный финиш
-                    write_log(service, f"ГОТОВО: Анализ {file_name} завершен")
-                    st.success("Анализ успешно завершен.")
-                    
+                    # Скачивание обработанного файла
                     request = service.files().get_media(fileId=result_file['id'])
                     file_data = request.execute()
                     
-                    st.download_button(
-                        label="Скачать результат анализа (MP4)", 
-                        data=file_data, 
-                        file_name=f"analyzed_{file_name}", 
-                        mime="video/mp4"
-                    )
+                    if is_image:
+                        st.success("Анализ изображения завершен")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write("Исходный скан")
+                            st.image(uploaded_file)
+                        with col2:
+                            st.write("Результат анализа")
+                            st.image(file_data)
+                        write_log(service, f"ГОТОВО: Изображение {file_name} обработано")
+                    else:
+                        st.success("Анализ видео завершен")
+                        st.download_button(
+                            label="Скачать проанализированное видео",
+                            data=file_data,
+                            file_name=f"processed_{file_name}",
+                            mime="video/mp4"
+                        )
+                        write_log(service, f"ГОТОВО: Видео {file_name} обработано")
 
-                    # Очистка
+                    # Автоматическая очистка
                     try:
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
-                        search_orig = service.files().list(q=f"'{INPUT_ID}' in parents and name = '{file_name}' and trashed = false", fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+                        search_orig = service.files().list(q=f"'{INPUT_ID}' in parents and name = '{file_name}' and trashed = false", fields='files(id)', supportsAllDrives=True).execute()
                         orig_items = search_orig.get('files', [])
                         if orig_items:
                             service.files().delete(fileId=orig_items[0]['id'], supportsAllDrives=True).execute()
-                        st.info("Файлы удалены из облака после обработки.")
                     except:
                         pass
                     
@@ -139,22 +157,21 @@ if uploaded_file:
                 
                 time.sleep(10)
                 progress_bar.progress(min((i + 1) / 60, 1.0))
-                status_text.info("Выполняется инференс модели ИИ. Пожалуйста, ожидайте...")
-            except:
-                time.sleep(5)
+                status_text.info("Система обрабатывает данные. Ожидайте...")
 
-        if not found:
-            st.error("Превышено время ожидания.")
+            if not found:
+                st.error("Таймаут ожидания. Проверьте работу сервера обработки.")
+        except Exception as e:
+            st.error(f"Системная ошибка: {e}")
 
-# --- АДМИН ПАНЕЛЬ (ТОЛЬКО ЛОГИ И ВРЕМЯ) ---
+# Админ-секция
 st.write("---")
-with st.expander("Панель управления"):
-    password = st.text_input("Пароль", type="password")
-    if password == "1234": # Здесь твой пароль
+with st.expander("Панель администратора"):
+    adm_pass = st.text_input("Код администратора", type="password")
+    if adm_pass == "1234":
         if service:
             _, logs = get_log_content(service)
             if logs:
-                st.text_area("История действий (Время Астаны)", logs, height=400)
-                st.download_button("Скачать лог", logs, file_name="logs.txt")
+                st.text_area("Логи системы", logs, height=300)
             else:
                 st.write("История пуста.")
