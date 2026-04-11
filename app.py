@@ -65,10 +65,8 @@ service = get_gdrive_service()
 
 # ОКНО ВХОДА (ПЕРВАЯ СТРАНИЦА)
 if not st.session_state['auth']:
-    # Блок заголовка с логотипом
-    col_title = st.columns([1, 4])
-    with col_title:
-        st.title("ColoRisk AI")
+    # Заголовок без логотипа
+    st.title("ColoRisk AI")
 
     # Описание проекта
     st.markdown("""
@@ -100,7 +98,7 @@ if not st.session_state['auth']:
     st.stop()
 
 # ОСНОВНОЙ ИНТЕРФЕЙС (ПОСЛЕ ВХОДА)
-st.title("ColoRisk: Аналитическая панель")
+st.title("AI-ColoScan: Аналитическая панель")
 st.write("Загрузите файл для проведения компьютерного анализа.")
 
 if st.sidebar.button("Выйти из системы"):
@@ -124,7 +122,7 @@ if uploaded_file and service:
             progress_bar = st.progress(0)
             found = False
 
-            # Ожидание результата (до 300 итераций для длинных видео)
+            # Ожидание результата
             for i in range(300):
                 if is_image:
                     target_name = file_name
@@ -164,7 +162,6 @@ if uploaded_file and service:
                         )
                         write_log(service, f"ГОТОВО: Видео-отчет {file_name} выдан пользователю")
                     
-                    # Удаление временного файла из выходной папки Диска
                     try:
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
                     except:
@@ -174,7 +171,6 @@ if uploaded_file and service:
                     break
                 
                 time.sleep(10)
-                # Визуальное обновление прогресса (до 100%)
                 progress_val = min((i + 1) / 100, 1.0)
                 progress_bar.progress(progress_val)
                 status_text.info("Выполняется сегментация и расчет параметров патологий. Пожалуйста, подождите...")
