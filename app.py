@@ -103,7 +103,7 @@ if not st.session_state['auth']:
     st.stop()
 
 # ОСНОВНОЙ ИНТЕРФЕЙС (ПОСЛЕ ВХОДА)
-st.title("AI-ColoScan: Аналитическая панель")
+st.title("ColoRisk: Аналитическая панель")
 st.write("Загрузите файл для проведения компьютерного анализа.")
 
 if st.sidebar.button("Выйти из системы"):
