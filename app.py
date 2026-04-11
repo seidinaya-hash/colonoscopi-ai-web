@@ -68,8 +68,8 @@ if not st.session_state['auth']:
     # Блок заголовка с логотипом
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
-        if os.path.exists("logo.png"):
-            st.image("logo.png", width=100)
+        if os.path.exists("logo.jpg"):
+            st.image("logo.jpg", width=100)
     with col_title:
         st.title("ColoRisk AI")
 
