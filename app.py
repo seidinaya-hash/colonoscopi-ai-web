@@ -56,20 +56,43 @@ def write_log(service, message):
         pass
 
 # Конфигурация страницы
-st.set_page_config(page_title="AI-ColoScan Portal", layout="centered")
+st.set_page_config(page_title="ColoRisk AI Portal", layout="centered")
 
 if 'auth' not in st.session_state:
     st.session_state['auth'] = False
 
 service = get_gdrive_service()
 
-# Окно входа
+# ОКНО ВХОДА (ПЕРВАЯ СТРАНИЦА)
 if not st.session_state['auth']:
-    st.title("Вход в систему AI-ColoScan")
-    st.write("Авторизуйтесь для доступа к анализу данных.")
+    # Верхняя часть: Лого и Заголовок
+    col_logo, col_title = st.columns([1, 4])
+    with col_logo:
+        if os.path.exists("assets/logo.png"):
+            st.image("assets/logo.png", width=100)
+    with col_title:
+        st.title("ColoRisk AI")
+
+    # Описание проекта
+    st.markdown("""
+    **ColoRisk AI** обеспечивает поддержку принятия решений в режиме реального времени — 
+    подсвечивает подозрительные участки на видео колоноскопии и рассчитывает примерный размер патологий.
+    """)
+
+    # Демонстрационное изображение
+    st.write("---")
+    st.subheader("Как работает система")
+    if os.path.exists("assets/demo.jpg"):
+        st.image("assets/demo.jpg", caption="Пример детекции и сегментации полипов нашей программой", use_container_width=True)
+    else:
+        st.info("Здесь будет отображено демонстрационное фото анализа полипов.")
     
+    st.write("---")
+    
+    # Форма авторизации
+    st.subheader("Авторизация для врачей")
     auth_pass = st.text_input("Введите код доступа", type="password")
-    if st.button("Войти"):
+    if st.button("Войти в панель анализа"):
         if auth_pass == "врач2024":
             st.session_state['auth'] = True
             if service:
@@ -79,7 +102,7 @@ if not st.session_state['auth']:
             st.error("Неверный код доступа")
     st.stop()
 
-# Основной интерфейс
+# ОСНОВНОЙ ИНТЕРФЕЙС (ПОСЛЕ ВХОДА)
 st.title("AI-ColoScan: Аналитическая панель")
 st.write("Загрузите скан или видео для проведения диагностики.")
 
@@ -106,7 +129,6 @@ if uploaded_file and service:
 
             # Ожидание результата
             for i in range(120):
-                # Для изображений ищем тот же файл, для видео ищем ZIP-отчет
                 if is_image:
                     target_name = file_name
                 else:
@@ -133,25 +155,18 @@ if uploaded_file and service:
                         with col2:
                             st.write("Результат анализа")
                             st.image(file_data)
-                        write_log(service, f"ГОТОВО: Изображение {file_name} обработано")
                     else:
                         st.success("Анализ видео и формирование отчета завершены")
-                        st.info("Архив содержит: Видео с разметкой, ТОП-10 кадров и текстовый отчет.")
                         st.download_button(
                             label="Скачать архив результатов (ZIP)",
                             data=file_data,
                             file_name=f"AI_Report_{file_name}.zip",
                             mime="application/zip"
                         )
-                        write_log(service, f"ГОТОВО: Архив отчета {file_name} загружен врачом")
-
+                    
                     # Очистка
                     try:
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
-                        search_orig = service.files().list(q=f"'{INPUT_ID}' in parents and name = '{file_name}' and trashed = false", fields='files(id)', supportsAllDrives=True).execute()
-                        orig_items = search_orig.get('files', [])
-                        if orig_items:
-                            service.files().delete(fileId=orig_items[0]['id'], supportsAllDrives=True).execute()
                     except:
                         pass
                     
@@ -160,10 +175,10 @@ if uploaded_file and service:
                 
                 time.sleep(10)
                 progress_bar.progress(min((i + 1) / 60, 1.0))
-                status_text.info("Система выполняет глубокий анализ и подбор кадров. Пожалуйста, подождите...")
+                status_text.info("Система выполняет анализ. Пожалуйста, подождите...")
 
             if not found:
-                st.error("Таймаут ожидания. Возможно, видео слишком длинное или сервер Colab отключен.")
+                st.error("Таймаут ожидания. Проверьте сервер обработки.")
         except Exception as e:
             st.error(f"Системная ошибка: {e}")
 
@@ -176,5 +191,3 @@ with st.expander("Панель администратора"):
             _, logs = get_log_content(service)
             if logs:
                 st.text_area("Логи системы", logs, height=300)
-            else:
-                st.write("История пуста.")
