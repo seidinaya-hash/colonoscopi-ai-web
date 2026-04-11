@@ -88,7 +88,7 @@ if not st.session_state['auth']:
     st.subheader("Авторизация для медицинского персонала")
     auth_pass = st.text_input("Введите код доступа", type="password")
     if st.button("Войти в систему"):
-        if auth_pass == "врач2024":
+        if auth_pass == "2026":
             st.session_state['auth'] = True
             if service:
                 write_log(service, "ВХОД: Пользователь авторизован")
