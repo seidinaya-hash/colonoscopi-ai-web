@@ -65,11 +65,11 @@ service = get_gdrive_service()
 
 # ОКНО ВХОДА (ПЕРВАЯ СТРАНИЦА)
 if not st.session_state['auth']:
-    # Верхняя часть: Лого и Заголовок
+    # Блок заголовка с логотипом
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
-        if os.path.exists("assets/logo.png"):
-            st.image("assets/logo.png", width=100)
+        if os.path.exists("logo.png"):
+            st.image("logo.png", width=100)
     with col_title:
         st.title("ColoRisk AI")
 
@@ -81,18 +81,18 @@ if not st.session_state['auth']:
 
     # Демонстрационное изображение
     st.write("---")
-    st.subheader("Как работает система")
-    if os.path.exists("assets/demo.jpg"):
-        st.image("assets/demo.jpg", caption="Пример детекции и сегментации полипов нашей программой", use_container_width=True)
+    st.subheader("Пример работы программы")
+    if os.path.exists("demo.jpg"):
+        st.image("demo.jpg", caption="Пример детекции и автоматического анализа патологий", use_container_width=True)
     else:
-        st.info("Здесь будет отображено демонстрационное фото анализа полипов.")
+        st.info("Загрузите файл demo.jpg в корневой каталог для отображения примера.")
     
     st.write("---")
     
     # Форма авторизации
-    st.subheader("Авторизация для врачей")
+    st.subheader("Авторизация для медицинского персонала")
     auth_pass = st.text_input("Введите код доступа", type="password")
-    if st.button("Войти в панель анализа"):
+    if st.button("Войти в систему"):
         if auth_pass == "врач2024":
             st.session_state['auth'] = True
             if service:
@@ -104,9 +104,9 @@ if not st.session_state['auth']:
 
 # ОСНОВНОЙ ИНТЕРФЕЙС (ПОСЛЕ ВХОДА)
 st.title("AI-ColoScan: Аналитическая панель")
-st.write("Загрузите скан или видео для проведения диагностики.")
+st.write("Загрузите файл для проведения компьютерного анализа.")
 
-if st.sidebar.button("Выйти"):
+if st.sidebar.button("Выйти из системы"):
     st.session_state['auth'] = False
     st.rerun()
 
@@ -116,7 +116,7 @@ if uploaded_file and service:
     file_name = uploaded_file.name
     is_image = uploaded_file.type.startswith('image')
     
-    with st.spinner("Передача файла в систему анализа..."):
+    with st.spinner("Передача данных в систему анализа..."):
         try:
             file_metadata = {'name': file_name, 'parents': [INPUT_ID]}
             media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=uploaded_file.type, resumable=True)
@@ -127,8 +127,8 @@ if uploaded_file and service:
             progress_bar = st.progress(0)
             found = False
 
-            # Ожидание результата
-            for i in range(120):
+            # Ожидание результата (до 300 итераций для длинных видео)
+            for i in range(300):
                 if is_image:
                     target_name = file_name
                 else:
@@ -150,21 +150,24 @@ if uploaded_file and service:
                         st.success("Анализ изображения завершен")
                         col1, col2 = st.columns(2)
                         with col1:
-                            st.write("Исходный скан")
+                            st.write("Исходный файл")
                             st.image(uploaded_file)
                         with col2:
-                            st.write("Результат анализа")
+                            st.write("Результат ИИ")
                             st.image(file_data)
+                        write_log(service, f"ГОТОВО: Изображение {file_name} обработано")
                     else:
-                        st.success("Анализ видео и формирование отчета завершены")
+                        st.success("Глубокий анализ видео и формирование отчета завершены")
+                        st.info("Сформированный архив содержит: обработанное видео, выборку ключевых кадров и текстовую документацию.")
                         st.download_button(
                             label="Скачать архив результатов (ZIP)",
                             data=file_data,
-                            file_name=f"AI_Report_{file_name}.zip",
+                            file_name=f"Report_AI_{file_name}.zip",
                             mime="application/zip"
                         )
+                        write_log(service, f"ГОТОВО: Видео-отчет {file_name} выдан пользователю")
                     
-                    # Очистка
+                    # Удаление временного файла из выходной папки Диска
                     try:
                         service.files().delete(fileId=result_file['id'], supportsAllDrives=True).execute()
                     except:
@@ -174,20 +177,24 @@ if uploaded_file and service:
                     break
                 
                 time.sleep(10)
-                progress_bar.progress(min((i + 1) / 60, 1.0))
-                status_text.info("Система выполняет анализ. Пожалуйста, подождите...")
+                # Визуальное обновление прогресса (до 100%)
+                progress_val = min((i + 1) / 100, 1.0)
+                progress_bar.progress(progress_val)
+                status_text.info("Выполняется сегментация и расчет параметров патологий. Пожалуйста, подождите...")
 
             if not found:
-                st.error("Таймаут ожидания. Проверьте сервер обработки.")
+                st.error("Превышено время ожидания. Проверьте статус сервера обработки.")
         except Exception as e:
             st.error(f"Системная ошибка: {e}")
 
-# Админ-секция
+# Секция мониторинга
 st.write("---")
-with st.expander("Панель администратора"):
-    adm_pass = st.text_input("Код администратора", type="password")
+with st.expander("Системный журнал"):
+    adm_pass = st.text_input("Введите пароль доступа к логам", type="password")
     if adm_pass == "1234":
         if service:
             _, logs = get_log_content(service)
             if logs:
-                st.text_area("Логи системы", logs, height=300)
+                st.text_area("Журнал операций", logs, height=300)
+            else:
+                st.write("Записи отсутствуют.")
