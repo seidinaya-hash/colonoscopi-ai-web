@@ -66,10 +66,7 @@ service = get_gdrive_service()
 # ОКНО ВХОДА (ПЕРВАЯ СТРАНИЦА)
 if not st.session_state['auth']:
     # Блок заголовка с логотипом
-    col_logo, col_title = st.columns([1, 4])
-    with col_logo:
-        if os.path.exists("logo.jpg"):
-            st.image("logo.jpg", width=100)
+    col_title = st.columns([1, 4])
     with col_title:
         st.title("ColoRisk AI")
 
